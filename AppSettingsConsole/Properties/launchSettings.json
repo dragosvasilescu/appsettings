@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AppSettingsConsole": {
+      "commandName": "Project",
+      "commandLineArgs": "--environment Test"
+    }
+  }
+}
