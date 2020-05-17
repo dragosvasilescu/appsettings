@@ -1,36 +1,29 @@
 ﻿using Microsoft.Extensions.Configuration;
 using System;
 using System.IO;
-using System.Linq;
-using System.Collections.Generic;
-using Newtonsoft.Json;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using AppSettingsConsole.Services;
+using AppSettingsConsole.Models;
+using log4net;
+using System.Reflection;
+using Microsoft.Extensions.Logging;
+using System.Threading.Tasks;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Diagnostics;
+using System.Threading;
+using System.Collections.Generic;
 
 namespace ConsoleApp10
 {
-    public class QueueConnecitonSettings 
-    {
-        public string HostName { get; set; }
-        public string Password { get; set; }
-        public string SSL { get; set; }
-    } 
+    
 
     class Program
     {
-        public Dictionary<string, object> MailSettings { get; set; }
+        private static readonly ILog log = LogManager.GetLogger(MethodBase.GetCurrentMethod().DeclaringType);
         static void Main(string[] args)
         {
-            if (args != null)
-            {
-                foreach (var item in args)
-                {
-                    Console.WriteLine(item);
-                }
-            }
-            Console.WriteLine("-----------------------------");
-
             var hostBuilder = new HostBuilder()
                 .UseContentRoot(Directory.GetCurrentDirectory())
                 .ConfigureHostConfiguration(configurationBuilder =>
@@ -42,41 +35,45 @@ namespace ConsoleApp10
                     var env = hostingContext.HostingEnvironment;
                     Console.WriteLine(env.EnvironmentName);
 
-                    cfg.AddJsonFile("appsettings.json", optional: false);
-                    cfg.AddJsonFile($"appsettings.{hostingContext.HostingEnvironment.EnvironmentName}.json", optional: true);
+                    cfg.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+                    cfg.AddJsonFile($"appsettings.{hostingContext.HostingEnvironment.EnvironmentName}.json", optional: true, reloadOnChange: true);
                     var config = cfg.Build();
-
-                    var children = hostingContext.Configuration.GetSection("MailSettings").GetChildren()
-                .ToDictionary(x => x.Key, x => x.Value);
-
-                    foreach (var item in children)
-                    {
-                        Console.WriteLine($"{item.Key} - {item.Value}");
-                    }
-
-                    var qq = config.GetSection("BrowseQueues").Get<List<string>>();
-
-                    foreach (var item in qq)
-                    {
-                        Console.WriteLine(item);
-                    }
-                    Console.WriteLine("\n\n\n\n Write Queues");
-                    Console.WriteLine("________________________________");
-                    var wq = config.GetSection("WriteQueues").Get<Dictionary<string, QueueConnecitonSettings>>();
-                    foreach (var item in wq)
-                    {
-                        Console.WriteLine($"{item.Key} - {JsonConvert.SerializeObject(item.Value)} ");
-                    }
                 })
-                .ConfigureServices((hostContext, services) =>
+                .ConfigureServices((hostingContext, services) =>
                 {
-                    services.AddHostedService<SampleService1>();
-                    services.AddHostedService<SampleService2>();
+                    MailSettings mailSettings = new MailSettings();
+                    hostingContext.Configuration.GetSection("MailSettings").Bind(mailSettings);
+                    services.AddHostedService<HostedService1>();
+                    services.AddHostedService<HostedService2>(); 
+
+                    services.Configure<MailSettings>(hostingContext.Configuration.GetSection("MailSettings"));
+                    services.Configure<Options>(hostingContext.Configuration);
+                    services.AddSingleton(hostingContext.Configuration);
+
+                    services.AddLogging(configure =>
+                    {
+                        configure.ClearProviders();
+                        configure.AddLog4Net("log4net.config");
+                    });
+
+                    services.AddSingleton<IOperationSingleton, Operation>();
+                    services.AddSingleton<IOperationSingletonInstance>(new Operation(Guid.Parse("5d47dbc5-775b-48a8-9409-ff73379e4793")));
+                    services.AddTransient<IOperationTransient, Operation>();
+                    services.AddScoped<IOperationScoped, Operation>();
                 });
-            
-            
+
             hostBuilder.RunConsoleAsync().Wait();
           
+        }
+
+        private static void Numbers_ItemDequeued(object sender, int e)
+        {
+            Console.WriteLine($"{e} has been dequeued");
+        }
+
+        private static void Numbers_ItemEnqueued(object sender, EventArgs e)
+        {
+           
         }
     }
 }
